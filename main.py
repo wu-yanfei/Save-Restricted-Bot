@@ -7,6 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pyrogram
 from pyrogram import Client, filters
+from pyrogram.enums import ChatType
 from pyrogram.errors import InviteHashExpired, UserAlreadyParticipant, UsernameNotOccupied
 from pyrogram.types import InputMediaAudio, InputMediaDocument, InputMediaPhoto, InputMediaVideo
 
@@ -135,14 +136,24 @@ def progress(current, total, message, type):
 
 
 def is_owner(message):
-    return message.from_user is not None and message.from_user.id in owner_ids
+    if message.from_user is not None and message.from_user.id in owner_ids:
+        return True
+
+    # Channel posts normally do not include from_user. Receiving channel posts
+    # already requires the bot to have been deliberately added to that channel.
+    return message.chat.type == ChatType.CHANNEL
+
+
+def reply_target(message):
+    """Reply in chats, but create a normal post inside channels."""
+    return None if message.chat.type == ChatType.CHANNEL else message.id
 
 
 def deny_access(message):
     bot.send_message(
         message.chat.id,
         "**You are not authorized to use this bot.**",
-        reply_to_message_id=message.id,
+        reply_to_message_id=reply_target(message),
     )
 
 
@@ -151,16 +162,17 @@ def send_start(client: pyrogram.client.Client, message: pyrogram.types.messages_
     if not is_owner(message):
         deny_access(message)
         return
+    sender_name = message.from_user.mention if message.from_user is not None else (message.chat.title or "there")
     bot.send_message(
         message.chat.id,
-        f"__👋 Hi **{message.from_user.mention}**, I am Save Restricted Bot, I can send you restricted content by it's post link__\n\n{USAGE}",
-        reply_to_message_id=message.id,
+        f"__👋 Hi **{sender_name}**, I am Save Restricted Bot, I can send you restricted content by it's post link__\n\n{USAGE}",
+        reply_to_message_id=reply_target(message),
     )
 
 
 def send_with_user_session(message, chatid, msgid, processed_media_groups):
     if acc is None:
-        bot.send_message(message.chat.id, "**String Session is not Set**", reply_to_message_id=message.id)
+        bot.send_message(message.chat.id, "**String Session is not Set**", reply_to_message_id=reply_target(message))
         return
     handle_private(message, chatid, msgid, processed_media_groups)
 
@@ -213,35 +225,35 @@ def save(client: pyrogram.client.Client, message: pyrogram.types.messages_and_me
 
     parsed_link = parse_tme_link(message.text)
     if parsed_link is None:
-        bot.send_message(message.chat.id, "**Invalid Link**", reply_to_message_id=message.id)
+        bot.send_message(message.chat.id, "**Invalid Link**", reply_to_message_id=reply_target(message))
         return
 
     if parsed_link["type"] == "invite":
         if acc is None:
-            bot.send_message(message.chat.id, "**String Session is not Set**", reply_to_message_id=message.id)
+            bot.send_message(message.chat.id, "**String Session is not Set**", reply_to_message_id=reply_target(message))
             return
 
         try:
             acc.join_chat(parsed_link["link"])
-            bot.send_message(message.chat.id, "**Chat Joined**", reply_to_message_id=message.id)
+            bot.send_message(message.chat.id, "**Chat Joined**", reply_to_message_id=reply_target(message))
         except UserAlreadyParticipant:
-            bot.send_message(message.chat.id, "**Chat alredy Joined**", reply_to_message_id=message.id)
+            bot.send_message(message.chat.id, "**Chat alredy Joined**", reply_to_message_id=reply_target(message))
         except InviteHashExpired:
-            bot.send_message(message.chat.id, "**Invalid Link**", reply_to_message_id=message.id)
+            bot.send_message(message.chat.id, "**Invalid Link**", reply_to_message_id=reply_target(message))
         except Exception as e:
-            bot.send_message(message.chat.id, f"**Error** : __{e}__", reply_to_message_id=message.id)
+            bot.send_message(message.chat.id, f"**Error** : __{e}__", reply_to_message_id=reply_target(message))
         return
 
     from_id = parsed_link["from_id"]
     to_id = parsed_link["to_id"]
     if to_id < from_id:
-        bot.send_message(message.chat.id, "**Invalid Range**", reply_to_message_id=message.id)
+        bot.send_message(message.chat.id, "**Invalid Range**", reply_to_message_id=reply_target(message))
         return
     if to_id - from_id + 1 > MAX_MESSAGE_RANGE:
         bot.send_message(
             message.chat.id,
             f"**Range is too large. Maximum {MAX_MESSAGE_RANGE} messages allowed.**",
-            reply_to_message_id=message.id,
+            reply_to_message_id=reply_target(message),
         )
         return
 
@@ -254,7 +266,7 @@ def save(client: pyrogram.client.Client, message: pyrogram.types.messages_and_me
             try:
                 send_with_user_session(message, chatid, msgid, processed_media_groups)
             except Exception as e:
-                bot.send_message(message.chat.id, f"**Error** : __{e}__", reply_to_message_id=message.id)
+                bot.send_message(message.chat.id, f"**Error** : __{e}__", reply_to_message_id=reply_target(message))
         else:
             try:
                 msg = bot.get_messages(chatid, msgid)
@@ -262,7 +274,7 @@ def save(client: pyrogram.client.Client, message: pyrogram.types.messages_and_me
                 bot.send_message(
                     message.chat.id,
                     "**The username is not occupied by anyone**",
-                    reply_to_message_id=message.id,
+                    reply_to_message_id=reply_target(message),
                 )
                 return
             try:
@@ -271,17 +283,17 @@ def save(client: pyrogram.client.Client, message: pyrogram.types.messages_and_me
                     if media_group_key in processed_media_groups:
                         continue
                     try:
-                        bot.copy_media_group(message.chat.id, msg.chat.id, msg.id, reply_to_message_id=message.id)
+                        bot.copy_media_group(message.chat.id, msg.chat.id, msg.id, reply_to_message_id=reply_target(message))
                         processed_media_groups.add(media_group_key)
                     except ValueError:
-                        bot.copy_message(message.chat.id, msg.chat.id, msg.id, reply_to_message_id=message.id)
+                        bot.copy_message(message.chat.id, msg.chat.id, msg.id, reply_to_message_id=reply_target(message))
                 else:
-                    bot.copy_message(message.chat.id, msg.chat.id, msg.id, reply_to_message_id=message.id)
+                    bot.copy_message(message.chat.id, msg.chat.id, msg.id, reply_to_message_id=reply_target(message))
             except Exception:
                 try:
                     send_with_user_session(message, msg.chat.id, msgid, processed_media_groups)
                 except Exception as e:
-                    bot.send_message(message.chat.id, f"**Error** : __{e}__", reply_to_message_id=message.id)
+                    bot.send_message(message.chat.id, f"**Error** : __{e}__", reply_to_message_id=reply_target(message))
 
         time.sleep(3)
 
@@ -299,11 +311,11 @@ def save_media(client: pyrogram.client.Client, message: pyrogram.types.messages_
             media_group = bot.get_media_group(message.chat.id, message.id)
             if message.id != media_group[0].id:
                 return
-            bot.copy_media_group(message.chat.id, message.chat.id, message.id, reply_to_message_id=message.id)
+            bot.copy_media_group(message.chat.id, message.chat.id, message.id, reply_to_message_id=reply_target(message))
         else:
-            bot.copy_message(message.chat.id, message.chat.id, message.id, reply_to_message_id=message.id)
+            bot.copy_message(message.chat.id, message.chat.id, message.id, reply_to_message_id=reply_target(message))
     except Exception as e:
-        bot.send_message(message.chat.id, f"**Error** : __{e}__", reply_to_message_id=message.id)
+        bot.send_message(message.chat.id, f"**Error** : __{e}__", reply_to_message_id=reply_target(message))
 
 
 def handle_private(message: pyrogram.types.messages_and_media.message.Message, chatid: int, msgid: int, processed_media_groups=None):
@@ -331,15 +343,15 @@ def handle_private_message(message: pyrogram.types.messages_and_media.message.Me
     msg_type = get_message_type(msg)
 
     if "Text" == msg_type:
-        bot.send_message(message.chat.id, msg.text, entities=msg.entities, reply_to_message_id=message.id)
+        bot.send_message(message.chat.id, msg.text, entities=msg.entities, reply_to_message_id=reply_target(message))
         return
     if msg_type is None:
-        bot.send_message(message.chat.id, "**Unsupported Message Type**", reply_to_message_id=message.id)
+        bot.send_message(message.chat.id, "**Unsupported Message Type**", reply_to_message_id=reply_target(message))
         return
 
     down_status_file = status_file(message, "down")
     up_status_file = status_file(message, "up")
-    smsg = bot.send_message(message.chat.id, "__Downloading__", reply_to_message_id=message.id)
+    smsg = bot.send_message(message.chat.id, "__Downloading__", reply_to_message_id=reply_target(message))
     threading.Thread(target=lambda: downstatus(down_status_file, smsg), daemon=True).start()
     file = None
     thumb = None
@@ -356,7 +368,7 @@ def handle_private_message(message: pyrogram.types.messages_and_media.message.Me
             except Exception:
                 thumb = None
 
-            bot.send_document(message.chat.id, file, thumb=thumb, caption=msg.caption, caption_entities=msg.caption_entities, reply_to_message_id=message.id, progress=progress, progress_args=[message, "up"])
+            bot.send_document(message.chat.id, file, thumb=thumb, caption=msg.caption, caption_entities=msg.caption_entities, reply_to_message_id=reply_target(message), progress=progress, progress_args=[message, "up"])
 
         elif "Video" == msg_type:
             try:
@@ -364,16 +376,16 @@ def handle_private_message(message: pyrogram.types.messages_and_media.message.Me
             except Exception:
                 thumb = None
 
-            bot.send_video(message.chat.id, file, duration=msg.video.duration, width=msg.video.width, height=msg.video.height, thumb=thumb, caption=msg.caption, caption_entities=msg.caption_entities, reply_to_message_id=message.id, progress=progress, progress_args=[message, "up"])
+            bot.send_video(message.chat.id, file, duration=msg.video.duration, width=msg.video.width, height=msg.video.height, thumb=thumb, caption=msg.caption, caption_entities=msg.caption_entities, reply_to_message_id=reply_target(message), progress=progress, progress_args=[message, "up"])
 
         elif "Animation" == msg_type:
-            bot.send_animation(message.chat.id, file, reply_to_message_id=message.id)
+            bot.send_animation(message.chat.id, file, reply_to_message_id=reply_target(message))
 
         elif "Sticker" == msg_type:
-            bot.send_sticker(message.chat.id, file, reply_to_message_id=message.id)
+            bot.send_sticker(message.chat.id, file, reply_to_message_id=reply_target(message))
 
         elif "Voice" == msg_type:
-            bot.send_voice(message.chat.id, file, caption=msg.caption, caption_entities=msg.caption_entities, reply_to_message_id=message.id, progress=progress, progress_args=[message, "up"])
+            bot.send_voice(message.chat.id, file, caption=msg.caption, caption_entities=msg.caption_entities, reply_to_message_id=reply_target(message), progress=progress, progress_args=[message, "up"])
 
         elif "Audio" == msg_type:
             try:
@@ -381,10 +393,10 @@ def handle_private_message(message: pyrogram.types.messages_and_media.message.Me
             except Exception:
                 thumb = None
 
-            bot.send_audio(message.chat.id, file, caption=msg.caption, caption_entities=msg.caption_entities, reply_to_message_id=message.id, progress=progress, progress_args=[message, "up"])
+            bot.send_audio(message.chat.id, file, caption=msg.caption, caption_entities=msg.caption_entities, reply_to_message_id=reply_target(message), progress=progress, progress_args=[message, "up"])
 
         elif "Photo" == msg_type:
-            bot.send_photo(message.chat.id, file, caption=msg.caption, caption_entities=msg.caption_entities, reply_to_message_id=message.id)
+            bot.send_photo(message.chat.id, file, caption=msg.caption, caption_entities=msg.caption_entities, reply_to_message_id=reply_target(message))
     finally:
         remove_file(thumb)
         remove_file(file)
@@ -395,7 +407,7 @@ def handle_private_message(message: pyrogram.types.messages_and_media.message.Me
 
 def handle_private_media_group(message: pyrogram.types.messages_and_media.message.Message, messages):
     down_status_file = status_file(message, "down")
-    smsg = bot.send_message(message.chat.id, "__Downloading__", reply_to_message_id=message.id)
+    smsg = bot.send_message(message.chat.id, "__Downloading__", reply_to_message_id=reply_target(message))
     threading.Thread(target=lambda: downstatus(down_status_file, smsg), daemon=True).start()
     files = []
     thumbs = []
@@ -438,7 +450,7 @@ def handle_private_media_group(message: pyrogram.types.messages_and_media.messag
 
         remove_file(down_status_file)
         bot.edit_message_text(message.chat.id, smsg.id, "__Uploading__")
-        bot.send_media_group(message.chat.id, media, reply_to_message_id=message.id)
+        bot.send_media_group(message.chat.id, media, reply_to_message_id=reply_target(message))
     finally:
         for thumb in thumbs:
             remove_file(thumb)
@@ -517,6 +529,10 @@ https://t.me/c/123456789/101-120
 ```
 
 The bot processes up to 10000 messages per request. Albums / media groups are sent as a group when possible.
+
+**Groups and channels**
+
+You can send links and commands in a group and the result will be posted in the same group. In a channel, add the bot as an administrator with permission to post messages; channel results are posted back into that channel.
 """
 
 
