@@ -78,7 +78,7 @@ else:
     acc = None
 
 
-MAX_MESSAGE_RANGE = 100
+MAX_MESSAGE_RANGE = 10000
 
 
 def remove_file(path):
@@ -516,7 +516,7 @@ https://t.me/channelname/1001-1010
 https://t.me/c/123456789/101-120
 ```
 
-The bot processes up to 100 messages per request. Albums / media groups are sent as a group when possible.
+The bot processes up to 10000 messages per request. Albums / media groups are sent as a group when possible.
 """
 
 
