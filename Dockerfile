@@ -11,4 +11,7 @@ RUN apt-get update \
 
 COPY . .
 
+ENV PORT=10000
+EXPOSE 10000
+
 CMD ["python", "main.py"]
