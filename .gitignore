@@ -13,6 +13,8 @@ ENV/
 # Local configuration and secrets
 .env
 .env.*
+!.env.example
+config.json
 config.local.json
 *.session
 *.session-journal
@@ -28,5 +30,3 @@ downloads/
 .coverage
 htmlcov/
 .DS_Store
-
-CLAUDE.md
