@@ -1,0 +1,9 @@
+{
+    "TOKEN": "your_bot_token",
+    "ID": "your_api_id",
+    "HASH": "your_api_hash",
+    "STRING": "your_pyrogram_session_string",
+    "OWNER_ID": [
+        123456789
+    ]
+}

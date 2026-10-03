@@ -14,6 +14,7 @@ ENV/
 .env
 .env.*
 config.local.json
+config.json
 *.session
 *.session-journal
 
@@ -22,6 +23,7 @@ config.local.json
 downloads/
 
 # Tooling and OS files
+.agents/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -30,3 +32,22 @@ htmlcov/
 .DS_Store
 
 CLAUDE.md
+
+# Local agent credentials
+.insta/agent-session.json
+
+# Local: the control plane this machine linked against
+.insta/link-plane.json
+
+.insta/.agent-session-*.tmp
+
+# InstaCloud: local observe-hook state (regenerated per machine, not source)
+.insta/observe/
+.insta/audit.jsonl
+
+# InstaCloud: agent skills installed by `npx skills add` (regenerable, not source)
+.claude/
+.codex/
+.agents/skills/
+.github/skills/
+skills-lock.json
